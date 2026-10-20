@@ -10,16 +10,16 @@ st.set_page_config(
     layout="wide"
 )
 
+# Fetch API Key securely from Streamlit Secrets or local environment
+API_KEY = st.secrets.get("GEMINI_API_KEY", "")
+
 # --- CUSTOM CSS STYLING ---
 st.markdown("""
 <style>
-    /* Main Background & Font */
     .main {
         background: linear-gradient(135deg, #0f172a 0%, #1e293b 100%);
         color: #f8fafc;
     }
-    
-    /* Hero Banner */
     .hero-container {
         background: linear-gradient(135deg, #ff6b6b 0%, #ff8e53 100%);
         padding: 30px;
@@ -38,8 +38,6 @@ st.markdown("""
         font-size: 1.2rem;
         opacity: 0.95;
     }
-
-    /* Metric Cards */
     .metric-card {
         background: rgba(255, 255, 255, 0.05);
         border: 1px solid rgba(255, 255, 255, 0.1);
@@ -57,8 +55,6 @@ st.markdown("""
         font-weight: bold;
         color: #ff8e53;
     }
-
-    /* Primary Buttons */
     .stButton>button {
         width: 100%;
         background: linear-gradient(90deg, #ff6b6b 0%, #ff8e53 100%);
@@ -74,8 +70,6 @@ st.markdown("""
         transform: translateY(-2px);
         box-shadow: 0 6px 20px rgba(255, 107, 107, 0.6);
     }
-
-    /* Section Cards */
     .content-card {
         background: rgba(30, 41, 59, 0.7);
         border-radius: 16px;
@@ -100,9 +94,11 @@ user_location = st.sidebar.text_input("🎯 Campus / Location:", value="Iqra Uni
 max_distance = st.sidebar.slider("📏 Range Limit (km):", 0.5, 10.0, 3.0, step=0.5)
 max_budget = st.sidebar.slider("💰 Max Budget (PKR):", 50, 2000, 500, step=50)
 
-st.sidebar.markdown("---")
-st.sidebar.markdown("### 🔑 API Setup")
-api_key = st.sidebar.text_input("Gemini API Key:", type="password", help="Paste your Gemini API key here")
+# Local fallback for API key if testing locally
+if not API_KEY:
+    st.sidebar.markdown("---")
+    st.sidebar.markdown("### 🔑 API Setup (Local Backup)")
+    API_KEY = st.sidebar.text_input("Gemini API Key:", type="password")
 
 # --- AI DATA RETRIEVAL FUNCTION ---
 def get_dynamic_food_spots(location, distance, budget, api_key):
@@ -122,7 +118,6 @@ def get_dynamic_food_spots(location, distance, budget, api_key):
 
         Do not include markdown code block formatting like ```json.
         """
-        # Updated Model ID to gemini-3.8-flash
         response = client.models.generate_content(
             model="gemini-3.8-flash",
             contents=prompt,
@@ -167,28 +162,28 @@ with m3:
 
 st.markdown("<br>", unsafe_allow_html=True)
 
-# --- MAIN CONTROLE & DATA DISPLAY ---
+# --- MAIN CONTROL & DATA DISPLAY ---
 st.markdown("### 🏬 Nearby Food Recommendations")
 
-if not api_key:
-    st.warning("🔑 Pehle sidebar mein apni **Gemini API Key** enter karein taake search start ho sake.")
-else:
-    if st.button("🔍 Find Nearby Food Spots Now"):
+if st.button("🔍 Find Nearby Food Spots Now"):
+    if not API_KEY:
+        st.error("⚠️ API Key configure nahi hai. Streamlit Secrets check karein.")
+    else:
         with st.spinner("✨ Nearby best food spots search ho rahe hain..."):
-            df_spots = get_dynamic_food_spots(user_location, max_distance, max_budget, api_key)
+            df_spots = get_dynamic_food_spots(user_location, max_distance, max_budget, API_KEY)
             st.session_state['df_spots'] = df_spots
 
-    if 'df_spots' in st.session_state and not st.session_state['df_spots'].empty:
-        st.dataframe(
-            st.session_state['df_spots'],
-            use_container_width=True,
-            column_config={
-                "Avg Price (PKR)": st.column_config.NumberColumn("Avg Price (PKR)", format="Rs. %d"),
-                "Distance (km)": st.column_config.NumberColumn("Distance (km)", format="📍 %.1f km")
-            }
-        )
-    elif 'df_spots' in st.session_state and st.session_state['df_spots'].empty:
-        st.error("❌ Koi food spot nahi mila. Range ya budget badha kar try karein.")
+if 'df_spots' in st.session_state and not st.session_state['df_spots'].empty:
+    st.dataframe(
+        st.session_state['df_spots'],
+        width="stretch",
+        column_config={
+            "Avg Price (PKR)": st.column_config.NumberColumn("Avg Price (PKR)", format="Rs. %d"),
+            "Distance (km)": st.column_config.NumberColumn("Distance (km)", format="📍 %.1f km")
+        }
+    )
+elif 'df_spots' in st.session_state and st.session_state['df_spots'].empty:
+    st.error("❌ Koi food spot nahi mila. Range ya budget badha kar try karein.")
 
 st.markdown("---")
 
@@ -203,20 +198,19 @@ with col_b:
     ask_ai = st.button("✨ Ask AI")
 
 if ask_ai:
-    if not api_key:
-        st.error("⚠️ Sidebar mein API Key enter karein.")
+    if not API_KEY:
+        st.error("⚠️ API Key config miss hai.")
     elif not user_query:
         st.info("💡 Pehle apna question type karein!")
     else:
         try:
-            client = genai.Client(api_key=api_key)
+            client = genai.Client(api_key=API_KEY)
             spots_info = st.session_state.get('df_spots', pd.DataFrame()).to_string(index=False) if 'df_spots' in st.session_state else "No data"
             
             context = f"User Location: {user_location}. Distance Limit: {max_distance} km. Budget: {max_budget} PKR.\nAvailable Spots Data:\n{spots_info}\n"
             prompt = f"{context}\nUser Question: {user_query}\nProvide a friendly, practical recommendation with emojis in simple English/Roman Urdu."
 
             with st.spinner("🤖 AI Recommendation tayyar kar raha hai..."):
-                # Updated Model ID to gemini-3.8-flash
                 response = client.models.generate_content(
                     model="gemini-3.8-flash",
                     contents=prompt,
